@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOC Co-Pilot — Security Operations Dashboard</title>
+<meta name="description" content="AI-powered Security Operations Center Co-Pilot for threat analysis and incident response">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-card: #1a2236;
+    --bg-input: #0d1321;
+    --border: #1e2d4a;
+    --border-glow: #3b82f6;
+    --text-primary: #e2e8f0;
+    --text-secondary: #8892a4;
+    --text-muted: #4a5568;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-purple: #8b5cf6;
+    --accent-green: #10b981;
+    --accent-yellow: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-orange: #f97316;
+    --sev-low: #10b981;
+    --sev-medium: #f59e0b;
+    --sev-high: #f97316;
+    --sev-critical: #ef4444;
+    --font-sans: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --transition: 0.2s ease;
+}
+
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+h1, h2, h3 { font-weight: 600; }
+
+#app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 28px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    transition: background var(--transition);
+}
+
+#app-header.attacker-header {
+    background: linear-gradient(135deg, #1a0505 0%, #3b0a0a 100%);
+    border-bottom-color: var(--accent-red);
+}
+
+#app-header.defender-header {
+    background: linear-gradient(135deg, #051a0f 0%, #0a3b1e 100%);
+    border-bottom-color: var(--accent-green);
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-brand svg {
+    width: 32px;
+    height: 32px;
+}
+
+.header-brand h1 {
+    font-size: 18px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.header-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+#attack-banner {
+    display: none;
+    background: linear-gradient(90deg, #7f1d1d, #991b1b, #7f1d1d);
+    background-size: 200% 100%;
+    animation: banner-sweep 2s linear infinite;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    position: sticky;
+    top: 61px;
+    z-index: 99;
+}
+
+@keyframes banner-sweep {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: 340px 1fr 380px;
+    gap: 0;
+    height: calc(100vh - 61px);
+}
+
+.dashboard.banner-active {
+    height: calc(100vh - 61px - 42px);
+}
+
+.panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel:last-child { border-right: none; }
+
+.panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+
+.panel-header h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+}
+
+.panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.panel-body::-webkit-scrollbar { width: 6px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.log-entry {
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all var(--transition);
+    background: var(--bg-card);
+}
+
+.log-entry:hover {
+    border-color: var(--accent-blue);
+    background: #1e293b;
+    transform: translateX(2px);
+}
+
+.log-entry.selected {
+    border-color: var(--accent-cyan);
+    background: #162032;
+    box-shadow: 0 0 0 1px var(--accent-cyan), inset 0 0 12px rgba(6, 182, 212, 0.05);
+}
+
+.log-entry.injection-log {
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.08);
+    animation: injection-pulse 3s infinite;
+}
+
+.log-entry.sim-event {
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.06);
+    animation: sim-glow 1.5s ease-out;
+}
+
+@keyframes sim-glow {
+    0% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.5); transform: scale(1.02); }
+    50% { box-shadow: 0 0 10px 2px rgba(239, 68, 68, 0.3); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); transform: scale(1); }
+}
+
+@keyframes injection-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    50% { box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.15); }
+}
+
+.log-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.log-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge-source {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--accent-purple);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.badge-low { background: rgba(16, 185, 129, 0.12); color: var(--sev-low); border: 1px solid rgba(16, 185, 129, 0.2); }
+.badge-medium { background: rgba(245, 158, 11, 0.12); color: var(--sev-medium); border: 1px solid rgba(245, 158, 11, 0.2); }
+.badge-high { background: rgba(249, 115, 22, 0.12); color: var(--sev-high); border: 1px solid rgba(249, 115, 22, 0.2); }
+.badge-critical { background: rgba(239, 68, 68, 0.12); color: var(--sev-critical); border: 1px solid rgba(239, 68, 68, 0.2); animation: badge-glow 2s infinite; }
+
+.badge-sim {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    animation: badge-glow 1s infinite;
+}
+
+@keyframes badge-glow {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.3); }
+}
+
+.log-desc {
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.log-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-cyan);
+}
+
+.chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.chat-bubble {
+    max-width: 95%;
+    padding: 14px 18px;
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    line-height: 1.7;
+    animation: fadeSlideIn 0.3s ease;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-bubble.user {
+    background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-bubble.ai {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.evidence-line {
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid var(--accent-yellow);
+    padding: 4px 10px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--accent-yellow);
+}
+
+.chat-input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 8px;
+}
+
+.chat-input {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--transition);
+}
+
+.chat-input:focus { border-color: var(--accent-blue); }
+
+.chat-input::placeholder { color: var(--text-muted); }
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+    color: white;
+}
+.btn-primary:hover { box-shadow: 0 0 16px rgba(59, 130, 246, 0.3); }
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--accent-blue); }
+
+.btn-danger {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    color: white;
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--accent-green), #059669);
+    color: white;
+}
+
+.btn-small {
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+.btn-mic {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    font-size: 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all var(--transition);
+    position: relative;
+}
+
+.btn-mic:hover { border-color: var(--accent-cyan); }
+
+.btn-mic.listening {
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.15);
+    animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.chat-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mode-toggle {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all var(--transition);
+}
+
+.mode-toggle.attacker {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-red);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mode-toggle.defender {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--accent-blue);
+}
+
+.agent-box {
+    padding: 12px;
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+}
+
+.agent-alpha {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.agent-beta {
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+.verdict-box {
+    padding: 14px;
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.verdict-badge {
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+}
+
+.verdict-LOW { background: rgba(16, 185, 129, 0.2); color: var(--sev-low); border: 1px solid var(--sev-low); }
+.verdict-MEDIUM { background: rgba(245, 158, 11, 0.2); color: var(--sev-medium); border: 1px solid var(--sev-medium); }
+.verdict-HIGH { background: rgba(249, 115, 22, 0.2); color: var(--sev-high); border: 1px solid var(--sev-high); }
+.verdict-CRITICAL { background: rgba(239, 68, 68, 0.2); color: var(--sev-critical); border: 1px solid var(--sev-critical); animation: badge-glow 1.5s infinite; }
+.verdict-UNKNOWN { background: rgba(100, 100, 100, 0.2); color: #aaa; border: 1px solid #666; }
+
+.verdict-text { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.verdict-action { font-size: 12px; color: var(--accent-cyan); margin-top: 4px; font-weight: 500; }
+
+.injection-alert {
+    padding: 16px;
+    border-radius: var(--radius);
+    text-align: center;
+    animation: fadeSlideIn 0.4s ease;
+}
+
+.injection-alert.danger {
+    background: rgba(239, 68, 68, 0.1);
+    border: 2px solid var(--accent-red);
+}
+
+.injection-alert.safe {
+    background: rgba(16, 185, 129, 0.1);
+    border: 2px solid var(--accent-green);
+}
+
+.injection-alert h3 { font-size: 18px; margin-bottom: 8px; }
+.injection-detail { font-size: 12px; color: var(--text-secondary); margin-top: 6px; line-height: 1.6; }
+
+textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    resize: vertical;
+    outline: none;
+}
+textarea:focus { border-color: var(--accent-blue); }
+
+input[type="text"] {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    outline: none;
+}
+input[type="text"]:focus { border-color: var(--accent-blue); }
+
+select {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    margin-bottom: 10px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238892a4' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+}
+select:focus { border-color: var(--accent-blue); }
+
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 12px;
+}
+
+.memory-row { display: flex; gap: 8px; margin-bottom: 8px; }
+
+.memory-result {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+}
+
+.threat-input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    outline: none;
+    margin-bottom: 10px;
+}
+.threat-input:focus { border-color: var(--accent-blue); }
+
+.profile-card {
+    background: linear-gradient(135deg, #1a0a0a 0%, #1a1230 100%);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-top: 12px;
+    animation: fadeSlideIn 0.5s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.profile-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-red), var(--accent-orange), transparent);
+    animation: profile-scan 3s linear infinite;
+}
+
+@keyframes profile-scan {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.profile-card-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent-red);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+}
+
+.profile-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    gap: 12px;
+}
+
+.profile-row:last-child { border-bottom: none; }
+
+.profile-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 90px;
+}
+
+.profile-value {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: right;
+    line-height: 1.4;
+}
+
+.risk-score-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.risk-low { background: rgba(16,185,129,0.2); color: var(--sev-low); border: 1px solid var(--sev-low); }
+.risk-medium { background: rgba(245,158,11,0.2); color: var(--sev-medium); border: 1px solid var(--sev-medium); }
+.risk-high { background: rgba(249,115,22,0.2); color: var(--sev-high); border: 1px solid var(--sev-high); }
+.risk-critical { background: rgba(239,68,68,0.2); color: var(--sev-critical); border: 1px solid var(--sev-critical); animation: badge-glow 1.5s infinite; }
+
+.section.sim-section .section-title::before { background: var(--accent-red); }
+
+.btn-sim {
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: white;
+    position: relative;
+    overflow: hidden;
+}
+.btn-sim:hover { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+.btn-sim::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    animation: btn-shimmer 2s infinite;
+}
+@keyframes btn-shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header id="app-header">
+    <div class="header-brand">
+        <svg viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="14" stroke="url(#hg)" stroke-width="2"/>
+            <path d="M10 16l4 4 8-8" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs><linearGradient id="hg" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#06b6d4"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
+        </svg>
+        <h1>SOC Co-Pilot</h1>
+    </div>
+    <div class="header-status">
+        <div class="status-dot"></div>
+        <span>LIVE MONITORING</span>
+        <span style="color:var(--text-muted)">|</span>
+        <span id="log-count-header">0 logs loaded</span>
+    </div>
+</header>
+
+<div id="attack-banner">⚠ LIVE ATTACK SIMULATION IN PROGRESS — MONITORING ACTIVE ⚠</div>
+
+<main class="dashboard" id="dashboard">
+
+    <!-- LEFT PANEL -->
+    <div class="panel" id="panel-logs">
+        <div class="panel-header">
+            <h2>📋 Log Viewer</h2>
+            <span class="log-count" id="log-count">0</span>
+        </div>
+        <div class="panel-body" id="log-list"></div>
+    </div>
+
+    <!-- CENTER PANEL -->
+    <div class="panel" id="panel-chat">
+        <div class="panel-header">
+            <h2>🤖 AI Analyst</h2>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="mode-toggle defender" id="mode-btn" onclick="toggleMode()">🟢 DEFENDER MODE</button>
+            </div>
+        </div>
+        <div class="chat-area" id="chat-area">
+            <div class="chat-bubble ai">Welcome, Analyst. I have access to all security logs. Ask me anything about threats, anomalies, or incidents.</div>
+        </div>
+        <div id="profile-card-container"></div>
+        <div class="chat-input-area">
+            <div class="chat-input-row">
+                <input type="text" class="chat-input" id="chat-input" placeholder="Ask about threats, IPs, anomalies..." onkeydown="if(event.key==='Enter')sendQuery()">
+                <button class="btn-mic" id="mic-btn" onclick="startVoice()" title="Voice Query">🎤</button>
+                <button class="btn btn-primary" onclick="sendQuery()">Send</button>
+            </div>
+            <div class="chat-actions">
+                <button class="btn btn-secondary btn-small" onclick="explainToCEO()">📊 Explain to CEO</button>
+                <button class="btn btn-secondary btn-small" onclick="sendAttackerDefender()">⚔️ Run Scenario</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="panel" id="panel-tools">
+        <div class="panel-header">
+            <h2>🛠 Agents & Tools</h2>
+        </div>
+        <div class="panel-body">
+
+            <div class="section sim-section">
+                <div class="section-title">⚡ Attack Simulation</div>
+                <select id="sim-scenario">
+                    <option value="bruteforce">🔐 Brute Force Attack</option>
+                    <option value="data_exfiltration">📤 Data Exfiltration</option>
+                    <option value="lateral_movement">🔀 Lateral Movement</option>
+                </select>
+                <button class="btn btn-sim" style="width:100%" onclick="runSimulation()" id="sim-btn">🎬 Run Live Attack Simulation</button>
+                <div id="sim-status" style="margin-top:8px"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Multi-Agent Debate</div>
+                <input type="text" class="threat-input" id="threat-input" placeholder="Threat summary (or select a log)...">
+                <button class="btn btn-primary" style="width:100%" onclick="runDebate()">⚡ Run Agent Debate</button>
+                <div id="debate-result"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Injection Scanner</div>
+                <button class="btn btn-danger" style="width:100%" onclick="scanInjection()">🔍 Scan Selected Log for Injection</button>
+                <div id="injection-result" style="margin-top:10px"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Investigation Notes</div>
+                <div class="memory-row">
+                    <input type="text" id="mem-key" placeholder="Case ID (e.g. case-001)" style="flex:1">
+                </div>
+                <textarea id="mem-note" rows="3" placeholder="Investigation notes..."></textarea>
+                <div class="memory-row" style="margin-top:8px">
+                    <button class="btn btn-primary btn-small" onclick="saveMemory()">💾 Save</button>
+                    <button class="btn btn-secondary btn-small" onclick="getMemory()">📂 Retrieve</button>
+                </div>
+                <div id="memory-result"></div>
+            </div>
+
+        </div>
+    </div>
+
+</main>
+
+<script>
+let logs = [];
+let selectedLog = null;
+let lastAIResponse = '';
+let currentMode = 'defender';
+let simRunning = false;
+
+async function loadLogs() {
+    const res = await fetch('/logs');
+    logs = await res.json();
+    updateLogCount();
+    renderLogs();
+}
+
+function updateLogCount() {
+    document.getElementById('log-count').textContent = logs.length;
+    document.getElementById('log-count-header').textContent = logs.length + ' logs loaded';
+}
+
+function renderLogs() {
+    const container = document.getElementById('log-list');
+    container.innerHTML = logs.map(log => {
+        const isInjection = log.description.includes('IGNORE') || log.description.includes('INSTRUCTIONS');
+        const isSim = log.simulated;
+        return `<div class="log-entry ${isInjection ? 'injection-log' : ''} ${isSim ? 'sim-event' : ''} ${selectedLog && selectedLog.id === log.id ? 'selected' : ''}" onclick="selectLog(${log.id})">
+            <div class="log-meta">
+                <span class="log-time">${log.timestamp.replace('T', ' ').replace('Z', '')}</span>
+                <span class="badge badge-source">${log.source}</span>
+                <span class="badge badge-${log.severity}">${log.severity}</span>
+                ${isInjection ? '<span class="badge badge-critical">⚠ INJECTION</span>' : ''}
+                ${isSim ? '<span class="badge badge-sim">LIVE</span>' : ''}
+            </div>
+            <div class="log-desc">#${log.id} — ${escapeHtml(log.description.length > 120 ? log.description.slice(0, 120) + '...' : log.description)}</div>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+function selectLog(id) {
+    selectedLog = logs.find(l => l.id === id);
+    renderLogs();
+    document.getElementById('threat-input').value = selectedLog.description;
+}
+
+function addChatBubble(text, type) {
+    const area = document.getElementById('chat-area');
+    const div = document.createElement('div');
+    div.className = `chat-bubble ${type}`;
+
+    if (type === 'ai') {
+        const lines = text.split('\n');
+        let html = '';
+        for (const line of lines) {
+            if (line.trim().startsWith('Evidence:') || line.trim().startsWith('- Evidence:')) {
+                html += `<div class="evidence-line">${escapeHtml(line)}</div>`;
+            } else {
+                html += escapeHtml(line) + '\n';
+            }
+        }
+        div.innerHTML = html;
+    } else {
+        div.textContent = text;
+    }
+
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+}
+
+function showLoading(containerId) {
+    const el = containerId ? document.getElementById(containerId) : document.getElementById('chat-area');
+    const loader = document.createElement('div');
+    loader.className = 'loading-text';
+    loader.id = 'loader-' + containerId;
+    loader.innerHTML = '<div class="spinner"></div> Analyzing...';
+    el.appendChild(loader);
+    el.scrollTop = el.scrollHeight;
+    return loader;
+}
+
+function removeLoading(loader) {
+    if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+}
+
+async function sendQuery() {
+    const input = document.getElementById('chat-input');
+    const question = input.value.trim();
+    if (!question) return;
+    input.value = '';
+    addChatBubble(question, 'user');
+    const loader = showLoading('chat-area');
+    try {
+        const res = await fetch('/query', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ question }) });
+        const data = await res.json();
+        removeLoading(loader);
+        lastAIResponse = data.answer;
+        addChatBubble(data.answer, 'ai');
+    } catch(e) {
+        removeLoading(loader);
+        addChatBubble('Error: ' + e.message, 'ai');
+    }
+}
+
+async function explainToCEO() {
+    const input = document.getElementById('chat-input');
+    let question = input.value.trim() || (selectedLog ? selectedLog.description : '');
+    if (!question && lastAIResponse) question = lastAIResponse.slice(0, 200);
+    if (!question) return;
+    const ceoQuestion = 'Explain this in simple non-technical language for a business executive in 2 sentences: ' + question;
+    input.value = '';
+    addChatBubble('📊 ' + ceoQuestion, 'user');
+    const loader = showLoading('chat-area');
+    try {
+        const res = await fetch('/query', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ question: ceoQuestion }) });
+        const data = await res.json();
+        removeLoading(loader);
+        lastAIResponse = data.answer;
+        addChatBubble(data.answer, 'ai');
+    } catch(e) {
+        removeLoading(loader);
+        addChatBubble('Error: ' + e.message, 'ai');
+    }
+}
+
+function toggleMode() {
+    const btn = document.getElementById('mode-btn');
+    const header = document.getElementById('app-header');
+    if (currentMode === 'defender') {
+        currentMode = 'attacker';
+        btn.className = 'mode-toggle attacker';
+        btn.textContent = '🔴 ATTACKER MODE';
+        header.className = 'attacker-header';
+    } else {
+        currentMode = 'defender';
+        btn.className = 'mode-toggle defender';
+        btn.textContent = '🟢 DEFENDER MODE';
+        header.className = 'defender-header';
+    }
+}
+
+async function sendAttackerDefender() {
+    const context = lastAIResponse || (selectedLog ? selectedLog.description : '');
+    if (!context) { addChatBubble('Select a log or ask a question first.', 'ai'); return; }
+    addChatBubble(`⚔️ Running ${currentMode.toUpperCase()} scenario...`, 'user');
+    const loader = showLoading('chat-area');
+    try {
+        const res = await fetch('/attacker-mode', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ context, mode: currentMode }) });
+        const data = await res.json();
+        removeLoading(loader);
+        lastAIResponse = data.response;
+        addChatBubble(data.response, 'ai');
+        if (data.mode === 'attacker') {
+            fetchAttackerProfile(data.response);
+        }
+    } catch(e) {
+        removeLoading(loader);
+        addChatBubble('Error: ' + e.message, 'ai');
+    }
+}
+
+async function runDebate() {
+    const threat = document.getElementById('threat-input').value.trim();
+    if (!threat) return;
+    const container = document.getElementById('debate-result');
+    container.innerHTML = '<div class="loading-text"><div class="spinner"></div> Agents are debating...</div>';
+    try {
+        const res = await fetch('/multi-agent', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ threat_summary: threat }) });
+        const data = await res.json();
+        const risk = (data.verdict.risk || 'UNKNOWN').toUpperCase();
+        container.innerHTML = `
+            <div class="agent-box agent-alpha" style="margin-top:12px">${escapeHtml(data.alpha)}</div>
+            <div class="agent-box agent-beta">${escapeHtml(data.beta)}</div>
+            <div class="verdict-box">
+                <div class="verdict-badge verdict-${risk}">${risk}</div>
+                <div class="verdict-text">${escapeHtml(data.verdict.verdict || '')}</div>
+                <div class="verdict-action">⚡ ${escapeHtml(data.verdict.action || '')}</div>
+            </div>`;
+    } catch(e) {
+        container.innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${e.message}</div>`;
+    }
+}
+
+async function scanInjection() {
+    if (!selectedLog) { document.getElementById('injection-result').innerHTML = '<div style="color:var(--text-muted);font-size:12px">Select a log first.</div>'; return; }
+    const container = document.getElementById('injection-result');
+    container.innerHTML = '<div class="loading-text"><div class="spinner"></div> Scanning...</div>';
+    try {
+        const res = await fetch('/check-injection', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ log_text: selectedLog.description }) });
+        const data = await res.json();
+        if (data.is_injection) {
+            container.innerHTML = `
+                <div class="injection-alert danger">
+                    <h3 style="color:var(--accent-red)">⚠ PROMPT INJECTION DETECTED</h3>
+                    <div style="font-size:24px;font-weight:700;color:var(--accent-red);margin:8px 0">${data.confidence}% Confidence</div>
+                    <div class="injection-detail"><strong>Explanation:</strong> ${escapeHtml(data.explanation)}</div>
+                    <div class="injection-detail"><strong>Safe Summary:</strong> ${escapeHtml(data.safe_summary)}</div>
+                </div>`;
+        } else {
+            container.innerHTML = `
+                <div class="injection-alert safe">
+                    <h3 style="color:var(--accent-green)">✓ Log is clean</h3>
+                    <div class="injection-detail">${escapeHtml(data.explanation || 'No injection patterns detected.')}</div>
+                </div>`;
+        }
+    } catch(e) {
+        container.innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${e.message}</div>`;
+    }
+}
+
+async function saveMemory() {
+    const key = document.getElementById('mem-key').value.trim();
+    const note = document.getElementById('mem-note').value.trim();
+    if (!key || !note) return;
+    try {
+        const res = await fetch('/memory', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: 'save', key, note }) });
+        const data = await res.json();
+        document.getElementById('memory-result').innerHTML = `<div class="memory-result">✓ Saved to "${escapeHtml(key)}" at ${data.data.timestamp}</div>`;
+    } catch(e) {
+        document.getElementById('memory-result').innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${e.message}</div>`;
+    }
+}
+
+async function getMemory() {
+    const key = document.getElementById('mem-key').value.trim();
+    if (!key) return;
+    try {
+        const res = await fetch('/memory', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: 'get', key }) });
+        const data = await res.json();
+        if (data.data && data.data.note) {
+            document.getElementById('memory-result').innerHTML = `<div class="memory-result"><strong>${escapeHtml(key)}</strong>\n${escapeHtml(data.data.note)}\n\n📅 ${data.data.timestamp}</div>`;
+        } else {
+            document.getElementById('memory-result').innerHTML = `<div class="memory-result" style="color:var(--text-muted)">No notes found for "${escapeHtml(key)}"</div>`;
+        }
+    } catch(e) {
+        document.getElementById('memory-result').innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${e.message}</div>`;
+    }
+}
+
+// ═══════════════════════════════════
+// FEATURE 1: ATTACK SIMULATION ENGINE
+// ═══════════════════════════════════
+
+async function runSimulation() {
+    if (simRunning) return;
+    simRunning = true;
+    const scenario = document.getElementById('sim-scenario').value;
+    const btn = document.getElementById('sim-btn');
+    const status = document.getElementById('sim-status');
+    const banner = document.getElementById('attack-banner');
+    const dashboard = document.getElementById('dashboard');
+
+    btn.disabled = true;
+    btn.textContent = '🔴 SIMULATION RUNNING...';
+    banner.style.display = 'block';
+    dashboard.classList.add('banner-active');
+
+    status.innerHTML = '<div class="loading-text"><div class="spinner"></div> Fetching attack events...</div>';
+
+    try {
+        const res = await fetch('/simulate-attack', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ scenario }) });
+        const data = await res.json();
+        const events = data.events;
+
+        status.innerHTML = `<div style="font-size:11px;color:var(--accent-red);font-family:var(--font-mono)">Streaming ${events.length} events...</div>`;
+
+        for (let i = 0; i < events.length; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            logs.push(events[i]);
+            updateLogCount();
+            renderLogs();
+
+            const logList = document.getElementById('log-list');
+            logList.scrollTop = logList.scrollHeight;
+
+            status.innerHTML = `<div style="font-size:11px;color:var(--accent-red);font-family:var(--font-mono)">⚡ Event ${i+1}/${events.length} — ${events[i].event_type}</div>`;
+        }
+
+        status.innerHTML = `<div style="font-size:11px;color:var(--accent-green);font-family:var(--font-mono)">✓ Simulation complete — ${events.length} events injected</div>`;
+
+    } catch(e) {
+        status.innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${e.message}</div>`;
+    }
+
+    setTimeout(() => {
+        banner.style.display = 'none';
+        dashboard.classList.remove('banner-active');
+    }, 3000);
+
+    btn.disabled = false;
+    btn.textContent = '🎬 Run Live Attack Simulation';
+    simRunning = false;
+}
+
+// ═══════════════════════════════════
+// FEATURE 2: ATTACKER PROFILE CARD
+// ═══════════════════════════════════
+
+async function fetchAttackerProfile(context) {
+    const container = document.getElementById('profile-card-container');
+    container.innerHTML = '<div class="loading-text" style="padding:12px 16px"><div class="spinner"></div> Profiling threat actor...</div>';
+    try {
+        const res = await fetch('/attacker-profile', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ context }) });
+        const p = await res.json();
+        const score = p.risk_score || 0;
+        let riskClass = 'risk-low';
+        if (score >= 80) riskClass = 'risk-critical';
+        else if (score >= 60) riskClass = 'risk-high';
+        else if (score >= 40) riskClass = 'risk-medium';
+
+        container.innerHTML = `
+            <div class="profile-card">
+                <div class="profile-card-title">🎯 THREAT ACTOR PROFILE</div>
+                <div class="profile-row">
+                    <span class="profile-label">Actor Type</span>
+                    <span class="profile-value">${escapeHtml(p.actor_type || 'Unknown')}</span>
+                </div>
+                <div class="profile-row">
+                    <span class="profile-label">Skill Level</span>
+                    <span class="profile-value">${escapeHtml(p.skill_level || 'Unknown')}</span>
+                </div>
+                <div class="profile-row">
+                    <span class="profile-label">Motivation</span>
+                    <span class="profile-value">${escapeHtml(p.motivation || 'Unknown')}</span>
+                </div>
+                <div class="profile-row">
+                    <span class="profile-label">Next Move</span>
+                    <span class="profile-value">${escapeHtml(p.likely_next_move || 'Unknown')}</span>
+                </div>
+                <div class="profile-row">
+                    <span class="profile-label">Risk Score</span>
+                    <span class="profile-value"><span class="risk-score-badge ${riskClass}">${score}/100</span></span>
+                </div>
+                <div class="profile-row">
+                    <span class="profile-label">Group Match</span>
+                    <span class="profile-value">${escapeHtml(p.possible_group_match || 'Unknown')}</span>
+                </div>
+            </div>`;
+    } catch(e) {
+        container.innerHTML = `<div style="color:var(--accent-red);font-size:12px;padding:12px">Profile error: ${e.message}</div>`;
+    }
+}
+
+// ═══════════════════════════════════
+// FEATURE 3: VOICE QUERY
+// ═══════════════════════════════════
+
+let recognition = null;
+let isListening = false;
+
+function startVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        addChatBubble('⚠ Voice query not supported in this browser. Use Chrome or Edge.', 'ai');
+        return;
+    }
+
+    if (isListening && recognition) {
+        recognition.stop();
+        return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    const micBtn = document.getElementById('mic-btn');
+    micBtn.classList.add('listening');
+    micBtn.textContent = '🔴';
+    isListening = true;
+
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('chat-input').value = transcript;
+        stopVoiceUI();
+        sendQuery();
+    };
+
+    recognition.onerror = function(event) {
+        stopVoiceUI();
+        if (event.error !== 'aborted') {
+            addChatBubble('⚠ Voice error: ' + event.error, 'ai');
+        }
+    };
+
+    recognition.onend = function() {
+        stopVoiceUI();
+    };
+
+    recognition.start();
+}
+
+function stopVoiceUI() {
+    const micBtn = document.getElementById('mic-btn');
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎤';
+    isListening = false;
+}
+
+loadLogs();
+</script>
+</body>
+</html>

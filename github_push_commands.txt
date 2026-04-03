@@ -1,0 +1,6 @@
+git init
+git add .
+git commit -m "Initial commit - SentinelX SOC Co-Pilot"
+git branch -M main
+git remote add origin https://github.com/rohitrawat2005/sentinelx-soc-copilot.git
+git push -u origin main
